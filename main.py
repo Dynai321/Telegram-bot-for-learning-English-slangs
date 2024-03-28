@@ -1,6 +1,7 @@
 import telebot
 from telebot import types
 import psycopg2
+import time
 
 bot = telebot.TeleBot('6663315211:AAFIdDTm0iief_r901XzICqvdh2wYKdcjzg')
 
@@ -14,11 +15,21 @@ conn = psycopg2.connect(
 cursor = conn.cursor()
 
 last_word_button_click = {}
+# last_word_button_click_time = {}
 
 
 def check_user_exists(user_id):
     cursor.execute('SELECT * FROM users WHERE user_id=%s', (user_id,))
     return cursor.fetchone() is not None
+
+
+# def check_word_button_blocked(user_id):
+#     if user_id in last_word_button_click_time:
+#         last_click_time = last_word_button_click_time[user_id]
+#         current_time = time.time()
+#         if current_time - last_click_time < 3600:
+#             return True
+#     return False
 
 
 @bot.message_handler(commands=['start'])
@@ -85,6 +96,10 @@ def text(message):
 
     elif message.text == 'Слово':
         user_id = message.from_user.id
+        # if check_word_button_blocked(user_id):
+        #     bot.send_message(message.chat.id, "Кнопка 'Слово' заблокирована. Попробуйте позже.")
+        #     return
+
         cursor.execute('SELECT word_id FROM learned_words WHERE user_id = %s', (user_id,))
         learned_words = cursor.fetchall()
         learned_word_ids = [word[0] for word in learned_words]
@@ -99,6 +114,7 @@ def text(message):
                 word_id, slang_word, definition = result
                 bot.send_message(message.chat.id, f"ID слова: {word_id}\nСлово: {slang_word}\nОписание: {definition}")
                 last_word_button_click[user_id] = (word_id, slang_word)
+                # last_word_button_click_time[user_id] = time.time()
             else:
                 bot.send_message(message.chat.id, "Вы уже выучили все слова из словаря.")
 
@@ -111,7 +127,7 @@ def text(message):
                 word_id, slang_word, definition = result
                 bot.send_message(message.chat.id, f"ID слова: {word_id}\nСлово: {slang_word}\nОписание: {definition}")
                 last_word_button_click[user_id] = (word_id, slang_word)
-
+                # last_word_button_click_time[user_id] = time.time()
 
     elif message.text == "Мой рейтинг":
         user_id = message.from_user.id
@@ -123,6 +139,19 @@ def text(message):
                 bot.send_message(message.chat.id, f"Ваш рейтинг: {rating}\nВаше звание: {rank or 'Нет звания'}")
             else:
                 bot.send_message(message.chat.id, "У вас пока нет рейтинга.")
+
+    elif message.text == 'Словарь':
+        user_id = message.from_user.id
+        cursor.execute('SELECT words.slang_word, words.definition FROM learned_words '
+                       'INNER JOIN words ON learned_words.word_id = words.word_id '
+                       'WHERE learned_words.user_id = %s', (user_id,))
+        learned_words = cursor.fetchall()
+        if learned_words:
+            words_list = '\n\n'.join([f'{word[0]}: {word[1]}' for word in learned_words])
+            bot.send_message(message.chat.id, f"Вы уже выучили следующие слова:\n\n{words_list}")
+        else:
+            bot.send_message(message.chat.id, "Вы еще не выучили ни одного слова.")
+
 
 if __name__ == "__main__":
     bot.polling(none_stop=True)
